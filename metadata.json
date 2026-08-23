@@ -1,0 +1,6 @@
+{
+  "name": "Al-Hosainy Library",
+  "description": "Desktop point-of-sale and inventory system for Al-Hosainy Library.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
