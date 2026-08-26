@@ -32,7 +32,9 @@ export async function fetchApi(url: string, options: RequestInit = {}) {
 
   const response = await fetch(url, { ...options, headers });
   
-  if (response.status === 401 || response.status === 403) {
+  // Only force a logout on 401 (session invalid/expired). A 403 means the user is
+  // authenticated but lacks permission for this one action — don't kick them out for it.
+  if (response.status === 401) {
     if(url !== '/api/auth/login' && url !== '/api/auth/setup') {
       removeToken();
       window.location.href = '/login';

@@ -215,9 +215,12 @@ app.use('/api', phase2Router);
   app.post('/api/cash-sessions', (req: any, res: any) => {
     try {
       const { date, opening_balance } = req.body;
-      // Close any open session first
-      db.prepare("UPDATE cash_sessions SET status = 'closed', closed_at = CURRENT_TIMESTAMP WHERE status = 'open'").run();
-      
+
+      const existingOpen = db.prepare("SELECT id FROM cash_sessions WHERE status = 'open'").get();
+      if (existingOpen) {
+        return res.status(409).json({ error: 'يوجد وردية مفتوحة بالفعل. الرجاء تقفيلها أولاً.' });
+      }
+
       const stmt = db.prepare(`
         INSERT INTO cash_sessions (date, opening_balance, opened_by)
         VALUES (?, ?, ?)
@@ -234,7 +237,7 @@ app.use('/api', phase2Router);
       const { closing_balance_actual } = req.body;
       const id = req.params.id;
       
-      const session = db.prepare("SELECT * FROM cash_sessions WHERE id = ?").get() as any;
+      const session = db.prepare("SELECT * FROM cash_sessions WHERE id = ?").get(id) as any;
       if (!session) {
         return res.status(404).json({ error: 'Session not found' });
       }
@@ -257,65 +260,90 @@ app.use('/api', phase2Router);
 
   // 3. Sales
   app.post('/api/sales', (req: any, res: any) => {
-    const { type, payment_method, subtotal, discount, delivery_fee, total, cash_session_id, items, customer, points_redeemed } = req.body;
-    
+    const { type, payment_method, discount, delivery_fee, cash_session_id, items, customer, customer_id: bodyCustomerId, points_redeemed } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'لا يوجد أصناف في الفاتورة' });
+    }
+
     const date = new Date().toISOString().split('T')[0];
     const sale_number = 'INV-' + Date.now();
-    
-    // Calculate points earned (e.g. 1 point for every 100 EGP)
-    const points_earned = Math.floor(total / 100);
-    
+
     try {
       const transaction = db.transaction(() => {
-        let customer_id = null;
+        // customer_id can be passed directly (existing customer selected in POS),
+        // or a `customer` object is used to find-or-create one (e.g. online orders).
+        let customer_id = bodyCustomerId ? Number(bodyCustomerId) : null;
         if (customer && customer.phone) {
-          // Check if customer exists
           let cust = db.prepare("SELECT id FROM customers WHERE phone = ?").get(customer.phone) as any;
           if (cust) {
             customer_id = cust.id;
           } else {
             const custStmt = db.prepare("INSERT INTO customers (name, phone, address, source) VALUES (?, ?, ?, ?)");
             const custInfo = custStmt.run(customer.name, customer.phone, customer.address, type);
-            customer_id = custInfo.lastInsertRowid;
+            customer_id = custInfo.lastInsertRowid as number;
           }
         }
-        
+
+        // Never trust client-sent prices/totals: recompute from the DB and verify stock.
+        let subtotal = 0;
+        const resolvedItems = items.map((item: any) => {
+          const prod = db.prepare("SELECT id, sell_price, cost_price, current_stock FROM products WHERE id = ? AND is_active = 1").get(item.product_id) as any;
+          if (!prod) throw new Error('منتج غير موجود');
+          const qty = Number(item.qty);
+          if (!(qty > 0)) throw new Error('كمية غير صالحة');
+          if (qty > prod.current_stock) throw new Error(`الرصيد غير كافٍ لمنتج رقم ${item.product_id}`);
+          const unit_price = prod.sell_price;
+          const line_total = Math.round(unit_price * qty * 100) / 100;
+          subtotal += line_total;
+          return { product_id: item.product_id, qty, unit_price, cost_price: prod.cost_price, line_total };
+        });
+
+        const safeDiscount = Math.max(0, Number(discount) || 0);
+        const safeDeliveryFee = Math.max(0, Number(delivery_fee) || 0);
+        const total = Math.max(0, subtotal - safeDiscount + safeDeliveryFee);
+        const points_earned = Math.floor(total / 100);
+
+        // Points redemption can never exceed the customer's actual balance.
+        let safePointsRedeemed = 0;
+        if (customer_id && points_redeemed) {
+          const cust = db.prepare('SELECT points FROM customers WHERE id = ?').get(customer_id) as any;
+          safePointsRedeemed = Math.max(0, Math.min(Number(points_redeemed) || 0, cust?.points || 0));
+        }
+
         const saleStmt = db.prepare(`
           INSERT INTO sales (sale_number, type, date, customer_id, payment_method, subtotal, discount, delivery_fee, total, cash_session_id, user_id, points_earned, points_redeemed)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        const saleInfo = saleStmt.run(sale_number, type, date, customer_id, payment_method, subtotal, discount || 0, delivery_fee || 0, total, cash_session_id || null, req.user.id, points_earned, points_redeemed || 0);
+        const saleInfo = saleStmt.run(sale_number, type, date, customer_id, payment_method, subtotal, safeDiscount, safeDeliveryFee, total, cash_session_id || null, req.user.id, points_earned, safePointsRedeemed);
         const saleId = saleInfo.lastInsertRowid;
-        
-        // Update customer points
+
         if (customer_id) {
-            const updatePoints = db.prepare('UPDATE customers SET points = points + ? - ? WHERE id = ?');
-            updatePoints.run(points_earned, points_redeemed || 0, customer_id);
+          const updatePoints = db.prepare('UPDATE customers SET points = points + ? - ? WHERE id = ?');
+          updatePoints.run(points_earned, safePointsRedeemed, customer_id);
         }
 
         const itemStmt = db.prepare(`
           INSERT INTO sale_items (sale_id, product_id, qty, unit_price, cost_price_at_sale, line_total)
           VALUES (?, ?, ?, ?, ?, ?)
         `);
-        
         const updateStockStmt = db.prepare(`
           UPDATE products SET current_stock = current_stock - ? WHERE id = ?
         `);
 
-        for (const item of items) {
-          const prod = db.prepare("SELECT cost_price FROM products WHERE id = ?").get(item.product_id) as any;
-          itemStmt.run(saleId, item.product_id, item.qty, item.unit_price, prod.cost_price, item.line_total);
+        for (const item of resolvedItems) {
+          itemStmt.run(saleId, item.product_id, item.qty, item.unit_price, item.cost_price, item.line_total);
           updateStockStmt.run(item.qty, item.product_id);
         }
-        
-        return saleId;
+
+        return { saleId, sale_number, total };
       });
 
-      const saleId = transaction();
-      res.json({ id: saleId, sale_number });
-    } catch (error) {
+      const result = transaction();
+      res.json({ id: result.saleId, sale_number: result.sale_number, total: result.total });
+    } catch (error: any) {
       console.error(error);
-      res.status(500).json({ error: 'Failed to process sale' });
+      res.status(400).json({ error: error.message || 'فشل تسجيل عملية البيع' });
     }
   });
 
@@ -378,7 +406,9 @@ app.use('/api', phase2Router);
     });
   }
 
-  const server = app.listen(PORT, '0.0.0.0', () => {
+  // This is a single-machine desktop app backed by a local SQLite file — the API
+  // has no business being reachable from other devices on the network.
+  const server = app.listen(PORT, '127.0.0.1', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
   

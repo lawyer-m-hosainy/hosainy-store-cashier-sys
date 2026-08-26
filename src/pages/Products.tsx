@@ -7,8 +7,10 @@ export default function Products() {
   const [products, setProducts] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [printProduct, setPrintProduct] = useState<any>(null);
-  const [form, setForm] = useState({ sku: '', name: '', cost_price: 0, sell_price: 0, current_stock: 0, reorder_level: 5, has_expiry: false, expiry_date: '' });
+  const emptyForm = { sku: '', name: '', cost_price: 0, sell_price: 0, current_stock: 0, reorder_level: 5, has_expiry: false, expiry_date: '' };
+  const [form, setForm] = useState(emptyForm);
 
   // Auto-generate EAN-13 barcode
   const generateBarcode = () => {
@@ -37,14 +39,36 @@ export default function Products() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetchApi('/api/products', {
-      method: 'POST',
+    await fetchApi(editingId ? `/api/products/${editingId}` : '/api/products', {
+      method: editingId ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form)
     });
     setIsAdding(false);
+    setEditingId(null);
     fetchProducts();
-    setForm({ sku: '', name: '', cost_price: 0, sell_price: 0, current_stock: 0, reorder_level: 5, has_expiry: false, expiry_date: '' });
+    setForm(emptyForm);
+  };
+
+  const startEdit = (product: any) => {
+    setForm({
+      sku: product.sku,
+      name: product.name,
+      cost_price: product.cost_price,
+      sell_price: product.sell_price,
+      current_stock: product.current_stock,
+      reorder_level: product.reorder_level,
+      has_expiry: !!product.has_expiry,
+      expiry_date: product.expiry_date || '',
+    });
+    setEditingId(product.id);
+    setIsAdding(true);
+  };
+
+  const cancelForm = () => {
+    setIsAdding(false);
+    setEditingId(null);
+    setForm(emptyForm);
   };
 
   return (
@@ -54,8 +78,8 @@ export default function Products() {
           <h1 className="text-3xl font-bold text-neutral-800">المنتجات والمخزون</h1>
           <p className="text-neutral-500 mt-2">إدارة الأصناف والكميات المتوفرة.</p>
         </div>
-        <button 
-          onClick={() => { setForm(f => ({ ...f, sku: generateBarcode() })); setIsAdding(true); }}
+        <button
+          onClick={() => { setEditingId(null); setForm({ ...emptyForm, sku: generateBarcode() }); setIsAdding(true); }}
           className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium flex items-center gap-2 transition-colors"
         >
           <Plus className="w-5 h-5" />
@@ -160,8 +184,8 @@ export default function Products() {
               )}
             </div>
             <div className="col-span-2 md:col-span-6 flex justify-end gap-3 mt-4">
-              <button type="button" onClick={() => setIsAdding(false)} className="px-4 py-2 text-neutral-600 hover:bg-neutral-100 rounded-lg">إلغاء</button>
-              <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg">حفظ المنتج</button>
+              <button type="button" onClick={cancelForm} className="px-4 py-2 text-neutral-600 hover:bg-neutral-100 rounded-lg">إلغاء</button>
+              <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg">{editingId ? 'حفظ التعديلات' : 'حفظ المنتج'}</button>
             </div>
           </form>
         )}
@@ -215,7 +239,7 @@ export default function Products() {
                       <button onClick={() => setPrintProduct(product)} className="p-1.5 text-neutral-400 hover:text-neutral-800 hover:bg-neutral-100 rounded-md transition-colors" title="طباعة الباركود">
                         <Printer className="w-5 h-5" />
                       </button>
-                      <button className="p-1.5 text-neutral-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="تعديل">
+                      <button onClick={() => startEdit(product)} className="p-1.5 text-neutral-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="تعديل">
                         <Edit className="w-5 h-5" />
                       </button>
                     </div>
