@@ -1,11 +1,34 @@
 import { fetchApi } from '../lib/api';
 import React, { useEffect, useState, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Search, AlertCircle, Edit, Printer, Clock, RefreshCw } from 'lucide-react';
 import Barcode from 'react-barcode';
+import { toast } from '../store/useToast';
+
+function getProductFlags(product: any) {
+  const isLow = product.current_stock <= product.reorder_level;
+  const isOutOfStock = product.current_stock <= 0;
+  const isExpiringSoon = !!(product.has_expiry && product.expiry_date && (() => {
+    const daysLeft = Math.ceil((new Date(product.expiry_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    return daysLeft >= 0 && daysLeft <= 30;
+  })());
+  const isExpired = !!(product.has_expiry && product.expiry_date && new Date(product.expiry_date) < new Date());
+  return { isLow, isOutOfStock, isExpiringSoon, isExpired };
+}
+
+const FILTERS = [
+  { key: 'all', label: 'الكل' },
+  { key: 'out_of_stock', label: 'نفذ من المخزون' },
+  { key: 'low_stock', label: 'مخزون منخفض' },
+  { key: 'expiring', label: 'قرب الصلاحية' },
+  { key: 'expired', label: 'منتهي الصلاحية' },
+];
 
 export default function Products() {
   const [products, setProducts] = useState<any[]>([]);
   const [search, setSearch] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeFilter = searchParams.get('filter') || 'all';
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [printProduct, setPrintProduct] = useState<any>(null);
@@ -39,15 +62,21 @@ export default function Products() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetchApi(editingId ? `/api/products/${editingId}` : '/api/products', {
+    const res = await fetchApi(editingId ? `/api/products/${editingId}` : '/api/products', {
       method: editingId ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form)
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error || 'فشل حفظ المنتج');
+      return;
+    }
     setIsAdding(false);
     setEditingId(null);
     fetchProducts();
     setForm(emptyForm);
+    toast.success(editingId ? 'تم حفظ التعديلات بنجاح' : 'تم إضافة المنتج بنجاح');
   };
 
   const startEdit = (product: any) => {
@@ -134,16 +163,29 @@ export default function Products() {
       )}
 
       <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
-        <div className="p-4 border-b border-neutral-100 flex items-center gap-4 bg-neutral-50/50">
+        <div className="p-4 border-b border-neutral-100 flex flex-col gap-3 bg-neutral-50/50">
           <div className="relative flex-1 max-w-md">
             <Search className="w-5 h-5 absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-            <input 
+            <input
               type="text"
               placeholder="ابحث بالاسم أو الباركود (SKU)..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-full pl-4 pr-10 py-2.5 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {FILTERS.map(f => (
+              <button
+                key={f.key}
+                onClick={() => setSearchParams(f.key === 'all' ? {} : { filter: f.key })}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  activeFilter === f.key ? 'bg-blue-600 text-white' : 'bg-white border border-neutral-200 text-neutral-600 hover:border-blue-500'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -203,13 +245,15 @@ export default function Products() {
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
-            {products.map(product => {
-              const isLow = product.current_stock <= product.reorder_level;
-              const isExpiringSoon = product.has_expiry && product.expiry_date && (() => {
-                const daysLeft = Math.ceil((new Date(product.expiry_date).getTime() - Date.now()) / (1000*60*60*24));
-                return daysLeft <= 30;
-              })();
-              const isExpired = product.has_expiry && product.expiry_date && new Date(product.expiry_date) < new Date();
+            {products.filter(product => {
+              const { isOutOfStock, isLow, isExpiringSoon, isExpired } = getProductFlags(product);
+              if (activeFilter === 'out_of_stock') return isOutOfStock;
+              if (activeFilter === 'low_stock') return isLow;
+              if (activeFilter === 'expiring') return isExpiringSoon;
+              if (activeFilter === 'expired') return isExpired;
+              return true;
+            }).map(product => {
+              const { isLow, isExpiringSoon, isExpired } = getProductFlags(product);
               return (
                 <tr key={product.id} className={`hover:bg-neutral-50/50 transition-colors ${isExpired ? 'bg-red-50/50' : ''}`}>
                   <td className="py-4 px-6 font-mono text-sm text-neutral-500">{product.sku}</td>

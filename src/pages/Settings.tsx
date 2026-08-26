@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { fetchApi } from '../lib/api';
 import { Database, Download, Upload, AlertTriangle, Send, Bell } from 'lucide-react';
+import { toast } from '../store/useToast';
 
 export default function Settings() {
   const [loading, setLoading] = useState(false);
@@ -28,21 +29,25 @@ export default function Settings() {
 
   const saveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetchApi('/api/settings', {
+    const res = await fetchApi('/api/settings', {
       method: 'POST',
       body: JSON.stringify(config)
     });
-    alert('تم حفظ الإعدادات بنجاح');
+    if (!res.ok) {
+      toast.error('فشل حفظ الإعدادات');
+      return;
+    }
+    toast.success('تم حفظ الإعدادات بنجاح');
   };
 
   const testTelegram = async () => {
     if(!config.telegram_bot_token || !config.telegram_chat_id) {
-       alert('يرجى حفظ التوكن ومعرف المحادثة أولاً');
+       toast.error('يرجى حفظ التوكن ومعرف المحادثة أولاً');
        return;
     }
     const res = await fetchApi('/api/reports/test-telegram', { method: 'POST' });
-    if(res.ok) alert('تم إرسال رسالة تجريبية بنجاح!');
-    else alert('فشل الإرسال، تأكد من التوكن والمعرف');
+    if(res.ok) toast.success('تم إرسال رسالة تجريبية بنجاح!');
+    else toast.error('فشل الإرسال، تأكد من التوكن والمعرف');
   };
 
   const handleBackup = async () => {
@@ -56,10 +61,10 @@ export default function Settings() {
         a.download = `backup_${new Date().toISOString().split('T')[0]}.sqlite`;
         a.click();
       } else {
-        alert('حدث خطأ أثناء النسخ الاحتياطي');
+        toast.error('حدث خطأ أثناء النسخ الاحتياطي');
       }
     } catch (e) {
-      alert('حدث خطأ أثناء النسخ الاحتياطي');
+      toast.error('حدث خطأ أثناء النسخ الاحتياطي');
     }
   };
 
@@ -83,15 +88,15 @@ export default function Settings() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert(data.message);
+        toast.success(data.message);
         setTimeout(() => {
           window.location.reload();
         }, 1500);
       } else {
-        alert(data.error || 'حدث خطأ');
+        toast.error(data.error || 'حدث خطأ');
       }
     } catch (e) {
-      alert('حدث خطأ أثناء الاستعادة');
+      toast.error('حدث خطأ أثناء الاستعادة');
     } finally {
       setLoading(false);
       e.target.value = '';

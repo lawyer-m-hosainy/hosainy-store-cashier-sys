@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Search, ShoppingCart, Plus, Minus, Trash2, UserPlus, PauseCircle, PlayCircle, Keyboard } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useNavigate } from 'react-router-dom';
+import { toast } from '../store/useToast';
 
 export default function POS() {
   const { activeCashSession } = useStore();
@@ -19,6 +20,7 @@ export default function POS() {
   // Hold & Recall
   const [heldCarts, setHeldCarts] = useState<any[]>([]);
   const [showHeldCarts, setShowHeldCarts] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // Customers
   const [customers, setCustomers] = useState<any[]>([]);
@@ -168,12 +170,12 @@ export default function POS() {
 
   const handleCheckout = async () => {
     if (!activeCashSession) {
-      alert('الرجاء فتح وردية خزينة أولاً من شاشة الخزينة.');
+      toast.error('الرجاء فتح وردية خزينة أولاً من شاشة الخزينة.');
       navigate('/cash');
       return;
     }
     if (type === 'delivery' && !selectedCustomerId) {
-       alert('يجب تحديد العميل في حالة التوصيل.');
+       toast.error('يجب تحديد العميل في حالة التوصيل.');
        return;
     }
     
@@ -204,10 +206,11 @@ export default function POS() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || 'فشل تسجيل عملية البيع');
+        toast.error(err.error || 'فشل تسجيل عملية البيع');
         return;
       }
 
+      toast.success('تم تسجيل الفاتورة بنجاح');
       setPrintInvoice(invoiceData);
       setCart([]);
       setSelectedCustomerId('');
@@ -302,7 +305,7 @@ export default function POS() {
               className="w-full pl-4 pr-12 py-4 text-lg rounded-2xl border-2 border-neutral-200 focus:outline-none focus:border-blue-500 shadow-sm bg-white"
             />
           </div>
-          <button 
+          <button
             onClick={() => setShowHeldCarts(true)}
             className="px-6 bg-white border border-neutral-200 hover:border-blue-500 text-neutral-600 rounded-2xl font-medium shadow-sm transition-colors relative flex items-center gap-2"
           >
@@ -312,8 +315,32 @@ export default function POS() {
               <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs w-6 h-6 flex items-center justify-center rounded-full border-2 border-white">{heldCarts.length}</span>
             )}
           </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowShortcuts(s => !s)}
+              className="h-full px-4 bg-white border border-neutral-200 hover:border-blue-500 text-neutral-600 rounded-2xl shadow-sm transition-colors flex items-center justify-center"
+              title="اختصارات لوحة المفاتيح"
+            >
+              <Keyboard className="w-5 h-5" />
+            </button>
+            {showShortcuts && (
+              <div className="absolute left-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-neutral-100 z-50 p-4 space-y-3">
+                <h3 className="font-bold text-neutral-800 text-sm mb-2">اختصارات لوحة المفاتيح</h3>
+                {[
+                  { key: 'F1', label: 'دفع وإصدار الفاتورة' },
+                  { key: 'F2', label: 'التركيز على مربع البحث' },
+                  { key: 'F4', label: 'إلغاء الفاتورة الحالية' },
+                ].map(s => (
+                  <div key={s.key} className="flex items-center justify-between text-sm">
+                    <span className="text-neutral-600">{s.label}</span>
+                    <span className="bg-neutral-100 text-neutral-700 font-mono px-2 py-0.5 rounded-md text-xs">{s.key}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-        
+
         {/* Held Carts Modal */}
         {showHeldCarts && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

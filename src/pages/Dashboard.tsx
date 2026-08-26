@@ -1,6 +1,7 @@
 import { fetchApi } from '../lib/api';
 import { useEffect, useState } from 'react';
-import { TrendingUp, ShoppingBag, Truck, AlertTriangle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { TrendingUp, ShoppingBag, Truck, AlertTriangle, Award } from 'lucide-react';
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
@@ -17,7 +18,7 @@ export default function Dashboard() {
     { title: 'إجمالي مبيعات اليوم', value: `${stats.totalSales || 0} ج.م`, icon: TrendingUp, color: 'bg-blue-50 text-blue-600' },
     { title: 'مبيعات داخلي', value: `${stats.instoreTotal || 0} ج.م`, icon: ShoppingBag, color: 'bg-indigo-50 text-indigo-600' },
     { title: 'مبيعات توصيل', value: `${stats.deliveryTotal || 0} ج.م`, icon: Truck, color: 'bg-purple-50 text-purple-600' },
-    { title: 'نواقص المخزون', value: `${stats.lowStockCount || 0} صنف`, icon: AlertTriangle, color: 'bg-amber-50 text-amber-600' },
+    { title: 'نواقص المخزون', value: `${stats.lowStockCount || 0} صنف`, icon: AlertTriangle, color: 'bg-amber-50 text-amber-600', link: '/products?filter=low_stock' },
   ];
 
   return (
@@ -28,29 +29,55 @@ export default function Dashboard() {
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {cards.map((card, i) => (
-          <div key={i} className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-100 flex items-center gap-4">
-            <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${card.color}`}>
-              <card.icon className="w-7 h-7" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-neutral-500">{card.title}</p>
-              <p className="text-2xl font-bold text-neutral-800 mt-1">{card.value}</p>
-            </div>
-          </div>
-        ))}
+        {cards.map((card, i) => {
+          const Wrapper: any = card.link ? Link : 'div';
+          return (
+            <Wrapper key={i} to={card.link} className={`bg-white p-6 rounded-2xl shadow-sm border border-neutral-100 flex items-center gap-4 ${card.link ? 'hover:border-blue-300 transition-colors' : ''}`}>
+              <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${card.color}`}>
+                <card.icon className="w-7 h-7" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-neutral-500">{card.title}</p>
+                <p className="text-2xl font-bold text-neutral-800 mt-1">{card.value}</p>
+              </div>
+            </Wrapper>
+          );
+        })}
       </div>
 
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-neutral-100">
-        <h2 className="text-xl font-bold text-neutral-800 mb-6">تفاصيل مالية سريعة</h2>
-        <div className="grid grid-cols-2 gap-8">
-          <div>
-            <p className="text-sm text-neutral-500">إجمالي الطلبات</p>
-            <p className="text-3xl font-bold text-neutral-800 mt-2">{stats.orderCount || 0}</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-neutral-100">
+          <h2 className="text-xl font-bold text-neutral-800 mb-6">تفاصيل مالية سريعة</h2>
+          <div className="grid grid-cols-2 gap-8">
+            <div>
+              <p className="text-sm text-neutral-500">إجمالي الطلبات</p>
+              <p className="text-3xl font-bold text-neutral-800 mt-2">{stats.orderCount || 0}</p>
+            </div>
+            <div>
+              <p className="text-sm text-neutral-500">إجمالي الربح (تقريبي)</p>
+              <p className="text-3xl font-bold text-green-600 mt-2">{stats.grossProfit || 0} ج.م</p>
+            </div>
           </div>
-          <div>
-            <p className="text-sm text-neutral-500">إجمالي الربح (تقريبي)</p>
-            <p className="text-3xl font-bold text-green-600 mt-2">{stats.grossProfit || 0} ج.م</p>
+        </div>
+
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-neutral-100">
+          <h2 className="text-xl font-bold text-neutral-800 mb-6 flex items-center gap-2">
+            <Award className="w-5 h-5 text-amber-500" />
+            أفضل المنتجات مبيعاً اليوم
+          </h2>
+          <div className="space-y-3">
+            {(stats.topProductsToday || []).map((p: any, i: number) => (
+              <div key={p.id} className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="w-6 h-6 rounded-full bg-neutral-100 text-neutral-500 text-xs font-bold flex items-center justify-center">{i + 1}</span>
+                  <span className="font-medium text-neutral-700">{p.name}</span>
+                </div>
+                <span className="text-sm text-neutral-500">{p.qty} قطعة — <span className="font-bold text-blue-600">{p.revenue} ج.م</span></span>
+              </div>
+            ))}
+            {(!stats.topProductsToday || stats.topProductsToday.length === 0) && (
+              <p className="text-neutral-400 text-sm text-center py-4">لا توجد مبيعات اليوم بعد.</p>
+            )}
           </div>
         </div>
       </div>

@@ -214,7 +214,7 @@ router.get('/reports', (req, res) => {
 
     // Daily trends for charting
     const dailyTrends = db.prepare(`
-      SELECT 
+      SELECT
         s.date,
         SUM(si.line_total) as sales,
         SUM(si.line_total - (si.qty * si.cost_price_at_sale)) as profit
@@ -225,6 +225,27 @@ router.get('/reports', (req, res) => {
       ORDER BY s.date ASC
     `).all(start, end);
 
+    // Best-selling products by revenue for the period
+    const topProducts = db.prepare(`
+      SELECT p.id, p.name, p.sku, SUM(si.qty) as qty_sold, SUM(si.line_total) as revenue,
+        SUM(si.line_total - (si.qty * si.cost_price_at_sale)) as profit
+      FROM sale_items si
+      JOIN sales s ON si.sale_id = s.id
+      JOIN products p ON si.product_id = p.id
+      WHERE s.date >= ? AND s.date <= ? AND s.status = 'completed'
+      GROUP BY p.id
+      ORDER BY revenue DESC
+      LIMIT 10
+    `).all(start, end);
+
+    // Sales breakdown by payment method
+    const salesByPaymentMethod = db.prepare(`
+      SELECT payment_method, SUM(total) as total, COUNT(id) as count
+      FROM sales
+      WHERE date >= ? AND date <= ? AND status = 'completed'
+      GROUP BY payment_method
+    `).all(start, end);
+
     res.json({
       totalSales: sales.total_sales || 0,
       grossProfit: profitQuery.gross_profit || 0,
@@ -233,7 +254,9 @@ router.get('/reports', (req, res) => {
       inventoryValue: inventoryValue.value || 0,
       topCustomers,
       stagnantProducts,
-      dailyTrends
+      dailyTrends,
+      topProducts,
+      salesByPaymentMethod
     });
   } catch (error) {
     console.error(error);

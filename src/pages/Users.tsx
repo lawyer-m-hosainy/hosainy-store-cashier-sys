@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { fetchApi } from '../lib/api';
 import { Plus, Shield, User, Key, Ban, CheckCircle } from 'lucide-react';
+import { toast } from '../store/useToast';
 
 export default function Users() {
   const [users, setUsers] = useState<any[]>([]);
@@ -27,9 +28,10 @@ export default function Users() {
       setShowAdd(false);
       setForm({ name: '', username: '', password: '', role: 'employee' });
       loadUsers();
+      toast.success('تم إضافة المستخدم بنجاح');
     } else {
       const err = await res.json();
-      alert(err.error);
+      toast.error(err.error);
     }
   };
 
@@ -41,7 +43,7 @@ export default function Users() {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      alert(err.error || 'فشل تغيير حالة المستخدم');
+      toast.error(err.error || 'فشل تغيير حالة المستخدم');
       return;
     }
     loadUsers();
@@ -50,11 +52,16 @@ export default function Users() {
   const resetPassword = async (id: number) => {
     const newPass = prompt('أدخل كلمة المرور الجديدة:');
     if (!newPass) return;
-    await fetchApi(`/api/auth/users/${id}/password`, {
+    const res = await fetchApi(`/api/auth/users/${id}/password`, {
       method: 'PUT',
       body: JSON.stringify({ password: newPass })
     });
-    alert('تم تغيير كلمة المرور بنجاح.');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.error || 'فشل تغيير كلمة المرور');
+      return;
+    }
+    toast.success('تم تغيير كلمة المرور بنجاح.');
   };
 
   return (

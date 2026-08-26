@@ -19,6 +19,7 @@ import Auth from './pages/Auth';
 import Users from './pages/Users';
 import AuditLogs from './pages/AuditLogs';
 import Settings from './pages/Settings';
+import Toaster from './components/Toaster';
 import { getUser } from './lib/api';
 
 const ProtectedRoute = ({ children, allowedRoles }: { children: any, allowedRoles?: string[] }) => {
@@ -31,6 +32,7 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: any, allowedRole
 export default function App() {
   return (
     <BrowserRouter>
+      <Toaster />
       <Routes>
         <Route path="/login" element={<Auth />} />
         

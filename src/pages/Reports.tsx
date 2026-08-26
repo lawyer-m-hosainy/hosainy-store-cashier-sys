@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { Download, FileText, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { toast } from '../store/useToast';
 
 export default function Reports() {
   const [reportData, setReportData] = useState<any>(null);
@@ -36,7 +37,7 @@ export default function Reports() {
       a.download = `report_${dateRange.start}_${dateRange.end}.pdf`;
       a.click();
     } catch (e) {
-      alert('فشل تصدير الـ PDF');
+      toast.error('فشل تصدير الـ PDF');
     }
     setIsExportingPDF(false);
   };
@@ -69,7 +70,15 @@ export default function Reports() {
     // Trends
     const wsTrends = XLSX.utils.json_to_sheet(reportData.dailyTrends);
     XLSX.utils.book_append_sheet(wb, wsTrends, "اتجاهات المبيعات");
-    
+
+    // Top Products
+    const wsTopProducts = XLSX.utils.json_to_sheet(reportData.topProducts || []);
+    XLSX.utils.book_append_sheet(wb, wsTopProducts, "أفضل المنتجات");
+
+    // Payment Methods
+    const wsPayments = XLSX.utils.json_to_sheet(reportData.salesByPaymentMethod || []);
+    XLSX.utils.book_append_sheet(wb, wsPayments, "طرق الدفع");
+
     XLSX.writeFile(wb, `report_${dateRange.start}_${dateRange.end}.xlsx`);
   };
 
@@ -141,6 +150,64 @@ export default function Reports() {
             <Bar dataKey="profit" name="الربح" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
           </BarChart>
         </ResponsiveContainer>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-100">
+          <h2 className="text-xl font-bold mb-6">أفضل المنتجات مبيعاً</h2>
+          <table className="w-full text-right text-sm">
+            <thead>
+              <tr className="text-neutral-500 border-b">
+                <th className="pb-3">المنتج</th>
+                <th className="pb-3">الكمية المباعة</th>
+                <th className="pb-3">الإيراد</th>
+                <th className="pb-3">الربح</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {(reportData.topProducts || []).map((p: any, i: number) => (
+                <tr key={i}>
+                  <td className="py-4 font-medium">{p.name}</td>
+                  <td className="py-4 text-neutral-500">{p.qty_sold}</td>
+                  <td className="py-4 font-bold text-blue-600">{p.revenue} ج.م</td>
+                  <td className="py-4 text-green-600">{p.profit} ج.م</td>
+                </tr>
+              ))}
+              {(!reportData.topProducts || reportData.topProducts.length === 0) && (
+                <tr>
+                  <td colSpan={4} className="py-6 text-center text-neutral-500">لا توجد بيانات للفترة المحددة.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-neutral-100">
+          <h2 className="text-xl font-bold mb-6">المبيعات حسب طريقة الدفع</h2>
+          <table className="w-full text-right text-sm">
+            <thead>
+              <tr className="text-neutral-500 border-b">
+                <th className="pb-3">طريقة الدفع</th>
+                <th className="pb-3">عدد الفواتير</th>
+                <th className="pb-3">الإجمالي</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {(reportData.salesByPaymentMethod || []).map((p: any, i: number) => (
+                <tr key={i}>
+                  <td className="py-4 font-medium">{p.payment_method === 'cash' ? 'نقدي' : p.payment_method === 'card' ? 'بطاقة' : p.payment_method}</td>
+                  <td className="py-4 text-neutral-500">{p.count}</td>
+                  <td className="py-4 font-bold text-blue-600">{p.total} ج.م</td>
+                </tr>
+              ))}
+              {(!reportData.salesByPaymentMethod || reportData.salesByPaymentMethod.length === 0) && (
+                <tr>
+                  <td colSpan={3} className="py-6 text-center text-neutral-500">لا توجد بيانات للفترة المحددة.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
