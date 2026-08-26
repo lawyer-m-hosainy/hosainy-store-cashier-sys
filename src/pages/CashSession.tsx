@@ -2,6 +2,7 @@ import { fetchApi } from '../lib/api';
 import { useState } from 'react';
 import { useStore } from '../store/useStore';
 import { Wallet, CheckCircle, AlertTriangle } from 'lucide-react';
+import { toast } from '../store/useToast';
 
 export default function CashSession() {
   const { activeCashSession, fetchActiveSession } = useStore();
@@ -20,7 +21,7 @@ export default function CashSession() {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      alert(err.error || 'فشل فتح الوردية');
+      toast.error(err.error || 'فشل فتح الوردية');
       fetchActiveSession();
       return;
     }
@@ -35,7 +36,11 @@ export default function CashSession() {
         closing_balance_actual: closingActual,
       })
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error(data.error || 'فشل تقفيل الوردية');
+      return;
+    }
     setResult(data);
     fetchActiveSession();
   };

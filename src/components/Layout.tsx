@@ -3,6 +3,7 @@ import { LayoutDashboard, Package, ShoppingCart, Wallet, Users, Truck, FileText,
 import { useStore } from '../store/useStore';
 import { useEffect } from 'react';
 import { getUser, removeToken } from '../lib/api';
+import NotificationBell from './NotificationBell';
 
 const navItems = [
   { name: 'الرئيسية', path: '/', icon: LayoutDashboard, reqRole: 'owner' },
@@ -87,8 +88,15 @@ export default function Layout() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
-        <Outlet />
+      <main className="flex-1 overflow-auto flex flex-col">
+        {user?.role === 'owner' && (
+          <div className="flex items-center justify-end px-6 py-3 border-b border-neutral-200 bg-white">
+            <NotificationBell />
+          </div>
+        )}
+        <div className="flex-1">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

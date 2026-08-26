@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserPlus, LogIn, Lock, User } from 'lucide-react';
 import { setToken, setUser, fetchApi } from '../lib/api';
+import { toast } from '../store/useToast';
 
 export default function Auth() {
   const [isSetup, setIsSetup] = useState(false);
@@ -31,7 +32,10 @@ export default function Auth() {
       });
       if (res.ok) {
         setIsSetup(false);
-        alert('تم إعداد الحساب بنجاح. يرجى تسجيل الدخول.');
+        toast.success('تم إعداد الحساب بنجاح. يرجى تسجيل الدخول.');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || 'فشل إعداد الحساب');
       }
     } else {
       // Login
@@ -47,7 +51,7 @@ export default function Auth() {
         window.location.href = '/';
       } else {
         const err = await res.json();
-        alert(err.error || 'خطأ في تسجيل الدخول');
+        toast.error(err.error || 'خطأ في تسجيل الدخول');
       }
     }
   };

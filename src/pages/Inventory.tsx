@@ -1,6 +1,7 @@
 import { fetchApi } from '../lib/api';
 import React, { useEffect, useState } from 'react';
 import { ClipboardCheck, Save } from 'lucide-react';
+import { toast } from '../store/useToast';
 
 export default function Inventory() {
   const [products, setProducts] = useState<any[]>([]);
@@ -56,7 +57,7 @@ export default function Inventory() {
     }).filter(a => a.difference !== 0);
 
     if (adjustments.length > 0) {
-      await fetchApi('/api/inventory/count', {
+      const res = await fetchApi('/api/inventory/count', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -64,9 +65,13 @@ export default function Inventory() {
           adjustments
         })
       });
+      if (!res.ok) {
+        toast.error('فشل اعتماد الجرد');
+        return;
+      }
     }
-    
-    alert('تم اعتماد الجرد بنجاح.');
+
+    toast.success('تم اعتماد الجرد بنجاح.');
     setIsCounting(false);
     fetchProducts();
   };

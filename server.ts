@@ -242,18 +242,19 @@ app.use('/api', phase2Router);
         return res.status(404).json({ error: 'Session not found' });
       }
       
-      const salesTotal = (db.prepare("SELECT SUM(total) as total FROM sales WHERE cash_session_id = ? AND payment_method = 'cash' AND status = 'completed'").get() as any).total || 0;
+      const salesTotal = (db.prepare("SELECT SUM(total) as total FROM sales WHERE cash_session_id = ? AND payment_method = 'cash' AND status = 'completed'").get(id) as any).total || 0;
       const expected = session.opening_balance + salesTotal;
       const diff = closing_balance_actual - expected;
-      
+
       const stmt = db.prepare(`
-        UPDATE cash_sessions 
+        UPDATE cash_sessions
         SET closing_balance_expected = ?, closing_balance_actual = ?, difference = ?, closed_by = ?, closed_at = CURRENT_TIMESTAMP, status = 'closed'
         WHERE id = ?
       `);
       stmt.run(expected, closing_balance_actual, diff, req.user.id, id);
       res.json({ success: true, expected, difference: diff });
     } catch (error) {
+      console.error(error);
       res.status(500).json({ error: 'Failed to close session' });
     }
   });
@@ -375,17 +376,70 @@ app.use('/api', phase2Router);
 
       const lowStock = db.prepare("SELECT count(*) as count FROM products WHERE current_stock <= reorder_level AND is_active = 1").get() as any;
 
+      const topProductsToday = db.prepare(`
+        SELECT p.id, p.name, SUM(si.qty) as qty, SUM(si.line_total) as revenue
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        JOIN products p ON si.product_id = p.id
+        WHERE s.date = ? AND s.status = 'completed'
+        GROUP BY p.id
+        ORDER BY revenue DESC
+        LIMIT 5
+      `).all(today);
+
       res.json({
         instoreTotal,
         deliveryTotal,
         totalSales: instoreTotal + deliveryTotal,
         orderCount,
         grossProfit: profitQuery.gross_profit || 0,
-        lowStockCount: lowStock.count
+        lowStockCount: lowStock.count,
+        topProductsToday
       });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+    }
+  });
+
+  // 4b. Dashboard Alerts (stock & expiry)
+  app.get('/api/dashboard/alerts', (req: any, res: any) => {
+    if (req.user.role !== 'owner') return res.status(403).json({ error: 'صلاحيات غير كافية' });
+    try {
+      const outOfStock = db.prepare(`
+        SELECT id, name, sku, current_stock FROM products
+        WHERE is_active = 1 AND current_stock <= 0
+        ORDER BY name
+      `).all();
+
+      const lowStock = db.prepare(`
+        SELECT id, name, sku, current_stock, reorder_level FROM products
+        WHERE is_active = 1 AND current_stock > 0 AND current_stock <= reorder_level
+        ORDER BY name
+      `).all();
+
+      const thirtyDaysAhead = new Date();
+      thirtyDaysAhead.setDate(thirtyDaysAhead.getDate() + 30);
+      const thirtyDaysAheadStr = thirtyDaysAhead.toISOString().split('T')[0];
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      const expiringSoon = db.prepare(`
+        SELECT id, name, sku, expiry_date FROM products
+        WHERE is_active = 1 AND has_expiry = 1 AND expiry_date IS NOT NULL
+        AND expiry_date >= ? AND expiry_date <= ?
+        ORDER BY expiry_date
+      `).all(todayStr, thirtyDaysAheadStr);
+
+      const expired = db.prepare(`
+        SELECT id, name, sku, expiry_date FROM products
+        WHERE is_active = 1 AND has_expiry = 1 AND expiry_date IS NOT NULL AND expiry_date < ?
+        ORDER BY expiry_date
+      `).all(todayStr);
+
+      res.json({ outOfStock, lowStock, expiringSoon, expired });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Failed to fetch alerts' });
     }
   });
 
