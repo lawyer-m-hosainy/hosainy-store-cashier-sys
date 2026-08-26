@@ -1,5 +1,5 @@
 import { fetchApi } from '../lib/api';
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Search, ShoppingCart, Plus, Minus, Trash2, UserPlus, PauseCircle, PlayCircle, Keyboard } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useNavigate } from 'react-router-dom';
@@ -14,6 +14,7 @@ export default function POS() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [printInvoice, setPrintInvoice] = useState<any>(null);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
   
   // Hold & Recall
   const [heldCarts, setHeldCarts] = useState<any[]>([]);
@@ -177,6 +178,7 @@ export default function POS() {
     }
     
     if (cart.length === 0) return;
+    if (isCheckingOut) return; // Prevent double-submit from a double-click or repeated F1 press
 
     const invoiceData = {
       date: new Date().toLocaleString('ar-EG'),
@@ -186,23 +188,32 @@ export default function POS() {
       cashier: 'الكاشير' // Can be fetched from user state
     };
 
-    await fetchApi('/api/sales', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type,
-        payment_method: paymentMethod,
-        subtotal: total,
-        total: total,
-        cash_session_id: activeCashSession.id,
-        customer_id: selectedCustomerId || null,
-        items: cart
-      })
-    });
-    
-    setPrintInvoice(invoiceData);
-    setCart([]);
-    setSelectedCustomerId('');
+    setIsCheckingOut(true);
+    try {
+      const res = await fetchApi('/api/sales', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          payment_method: paymentMethod,
+          cash_session_id: activeCashSession.id,
+          customer_id: selectedCustomerId || null,
+          items: cart
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'فشل تسجيل عملية البيع');
+        return;
+      }
+
+      setPrintInvoice(invoiceData);
+      setCart([]);
+      setSelectedCustomerId('');
+    } finally {
+      setIsCheckingOut(false);
+    }
   };
 
   if (!activeCashSession) {
@@ -430,12 +441,12 @@ export default function POS() {
             <button onClick={() => setType('delivery')} className={`py-2.5 rounded-xl font-medium border transition-colors ${type === 'delivery' ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white border-neutral-200 text-neutral-600'}`}>توصيل</button>
           </div>
           
-          <button 
-            disabled={cart.length === 0}
+          <button
+            disabled={cart.length === 0 || isCheckingOut}
             onClick={handleCheckout}
             className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white text-lg font-bold rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2"
           >
-            دفع وإصدار الفاتورة <span className="bg-white/20 text-sm px-2 py-0.5 rounded ml-2">F1</span>
+            {isCheckingOut ? 'جاري الحفظ...' : <>دفع وإصدار الفاتورة <span className="bg-white/20 text-sm px-2 py-0.5 rounded ml-2">F1</span></>}
           </button>
         </div>
       </div>

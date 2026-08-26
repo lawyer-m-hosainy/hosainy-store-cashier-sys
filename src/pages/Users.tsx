@@ -35,10 +35,15 @@ export default function Users() {
 
   const toggleStatus = async (id: number, currentStatus: number) => {
     if(!confirm('هل أنت متأكد من تغيير حالة المستخدم؟')) return;
-    await fetchApi(`/api/auth/users/${id}/status`, {
+    const res = await fetchApi(`/api/auth/users/${id}/status`, {
       method: 'PUT',
       body: JSON.stringify({ is_active: currentStatus ? 0 : 1 })
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || 'فشل تغيير حالة المستخدم');
+      return;
+    }
     loadUsers();
   };
 

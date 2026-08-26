@@ -10,7 +10,7 @@ export default function CashSession() {
   const [result, setResult] = useState<any>(null);
 
   const handleOpen = async () => {
-    await fetchApi('/api/cash-sessions', {
+    const res = await fetchApi('/api/cash-sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -18,6 +18,12 @@ export default function CashSession() {
         opening_balance: openingBalance,
       })
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || 'فشل فتح الوردية');
+      fetchActiveSession();
+      return;
+    }
     fetchActiveSession();
   };
 
