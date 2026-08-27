@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import * as TelegramBotModule from 'node-telegram-bot-api';
 const TelegramBot = (TelegramBotModule as any).default || TelegramBotModule;
 import db from '../db/db';
+import { sendWhatsAppMessage } from './whatsapp';
 
 function getSettings() {
   const settings = db.prepare('SELECT * FROM settings').all() as any[];
@@ -20,7 +21,7 @@ async function sendTelegramMessage(token: string, chatId: string, message: strin
   }
 }
 
-function generateReportText(period: 'daily' | 'weekly' | 'monthly', start: string, end: string) {
+function buildReportData(period: 'daily' | 'weekly' | 'monthly', start: string, end: string) {
   const sales = db.prepare("SELECT SUM(total) as total_sales FROM sales WHERE date >= ? AND date <= ? AND status = 'completed'").get(start, end) as any;
   const profitQuery = db.prepare(`SELECT SUM(si.line_total - (si.qty * si.cost_price_at_sale)) as gross_profit FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.date >= ? AND s.date <= ? AND s.status = 'completed'`).get(start, end) as any;
   const expenses = db.prepare("SELECT SUM(amount) as total_expenses FROM expenses WHERE date >= ? AND date <= ?").get(start, end) as any;
@@ -29,23 +30,50 @@ function generateReportText(period: 'daily' | 'weekly' | 'monthly', start: strin
   const grossProfit = profitQuery.gross_profit || 0;
   const totalExpenses = expenses.total_expenses || 0;
   const netProfit = grossProfit - totalExpenses;
-
   const title = period === 'daily' ? 'يومي' : period === 'weekly' ? 'أسبوعي' : 'شهري';
-  
-  return `📊 <b>تقرير ${title} - مكتبة الحسيني</b>
-📅 من: ${start}
-إلى: ${end}
 
-💰 <b>المبيعات:</b> ${totalSales} ج.م
-📈 <b>الربح الإجمالي:</b> ${grossProfit} ج.م
-💸 <b>المصروفات:</b> ${totalExpenses} ج.م
+  return { title, start, end, totalSales, grossProfit, totalExpenses, netProfit };
+}
+
+function formatReportTelegram(data: ReturnType<typeof buildReportData>) {
+  return `📊 <b>تقرير ${data.title} - Hosainy Store</b>
+📅 من: ${data.start}
+إلى: ${data.end}
+
+💰 <b>المبيعات:</b> ${data.totalSales} ج.م
+📈 <b>الربح الإجمالي:</b> ${data.grossProfit} ج.م
+💸 <b>المصروفات:</b> ${data.totalExpenses} ج.م
 -------------
-💳 <b>صافي الربح:</b> ${netProfit} ج.م`;
+💳 <b>صافي الربح:</b> ${data.netProfit} ج.م`;
+}
+
+function formatReportWhatsApp(data: ReturnType<typeof buildReportData>) {
+  return `📊 *تقرير ${data.title} - Hosainy Store*
+📅 من: ${data.start}
+إلى: ${data.end}
+
+💰 *المبيعات:* ${data.totalSales} ج.م
+📈 *الربح الإجمالي:* ${data.grossProfit} ج.م
+💸 *المصروفات:* ${data.totalExpenses} ج.م
+-------------
+💳 *صافي الربح:* ${data.netProfit} ج.م`;
+}
+
+async function dispatchReport(settings: any, period: 'daily' | 'weekly' | 'monthly', start: string, end: string) {
+  const data = buildReportData(period, start, end);
+  if (settings.telegram_bot_token && settings.telegram_chat_id) {
+    await sendTelegramMessage(settings.telegram_bot_token, settings.telegram_chat_id, formatReportTelegram(data));
+  }
+  if (settings.whatsapp_number) {
+    await sendWhatsAppMessage(settings.whatsapp_number, formatReportWhatsApp(data));
+  }
 }
 
 export async function processReports() {
   const settings = getSettings();
-  if (!settings.telegram_bot_token || !settings.telegram_chat_id) return;
+  const hasTelegram = !!(settings.telegram_bot_token && settings.telegram_chat_id);
+  const hasWhatsApp = !!settings.whatsapp_number;
+  if (!hasTelegram && !hasWhatsApp) return;
 
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
@@ -58,8 +86,7 @@ export async function processReports() {
     
     const logged = db.prepare('SELECT id FROM report_logs WHERE report_type = ? AND report_date = ?').get('daily', dateStr);
     if (!logged) {
-      const text = generateReportText('daily', dateStr, dateStr);
-      await sendTelegramMessage(settings.telegram_bot_token, settings.telegram_chat_id, text);
+      await dispatchReport(settings, 'daily', dateStr, dateStr);
       db.prepare('INSERT INTO report_logs (report_type, report_date) VALUES (?, ?)').run('daily', dateStr);
     }
   }
@@ -73,8 +100,7 @@ export async function processReports() {
     
     const logged = db.prepare('SELECT id FROM report_logs WHERE report_type = ? AND report_date = ?').get('weekly', endStr);
     if (!logged) {
-      const text = generateReportText('weekly', startStr, endStr);
-      await sendTelegramMessage(settings.telegram_bot_token, settings.telegram_chat_id, text);
+      await dispatchReport(settings, 'weekly', startStr, endStr);
       db.prepare('INSERT INTO report_logs (report_type, report_date) VALUES (?, ?)').run('weekly', endStr);
     }
   }
@@ -95,8 +121,7 @@ export async function processReports() {
 
     const logged = db.prepare('SELECT id FROM report_logs WHERE report_type = ? AND report_date = ?').get('monthly', endStr);
     if (!logged) {
-      const text = generateReportText('monthly', startStr, endStr);
-      await sendTelegramMessage(settings.telegram_bot_token, settings.telegram_chat_id, text);
+      await dispatchReport(settings, 'monthly', startStr, endStr);
       db.prepare('INSERT INTO report_logs (report_type, report_date) VALUES (?, ?)').run('monthly', endStr);
     }
   }
