@@ -6,6 +6,7 @@ import { initializeDatabase } from './src/db/init';
 import db from './src/db/db';
 import phase2Router from './src/api/phase2';
 import authRouter, { authenticateToken, requireOwner } from './src/api/auth';
+import whatsappRouter, { tryAutoReconnectWhatsApp } from './src/api/whatsapp';
 import multer from 'multer';
 import fs from 'fs';
 import { initCronJobs, processReports } from './src/api/reports';
@@ -22,6 +23,9 @@ export async function startServer() {
   // Initialize Cron Jobs for Auto Reporting
   initCronJobs();
 
+  // Reconnect WhatsApp automatically if a session was already linked
+  tryAutoReconnectWhatsApp();
+
   app.use(cors());
   app.use(express.json());
 
@@ -30,7 +34,9 @@ export async function startServer() {
 
   // Protect all API routes
   app.use('/api', authenticateToken);
-  
+
+  app.use('/api/whatsapp', whatsappRouter);
+
   fs.mkdirSync('uploads', { recursive: true });
   const upload = multer({ dest: 'uploads/' });
 
