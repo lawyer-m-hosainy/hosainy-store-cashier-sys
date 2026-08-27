@@ -1,6 +1,7 @@
 import express from 'express';
 import db from '../db/db';
 import puppeteer from 'puppeteer';
+import { requireOwner } from './auth';
 
 const router = express.Router();
 
@@ -172,7 +173,8 @@ router.post('/inventory/count', (req: any, res: any) => {
 });
 
 // --- 6. Reports ---
-router.get('/reports', (req, res) => {
+// Financial/profit data is owner-only, same as /api/dashboard/today.
+router.get('/reports', requireOwner, (req, res) => {
   const { start, end } = req.query;
   try {
     const sales = db.prepare("SELECT SUM(total) as total_sales FROM sales WHERE date >= ? AND date <= ? AND status = 'completed'").get(start, end) as any;
@@ -264,7 +266,7 @@ router.get('/reports', (req, res) => {
   }
 });
 
-router.get('/export-pdf', async (req, res) => {
+router.get('/export-pdf', requireOwner, async (req, res) => {
   const { start, end } = req.query;
   
   try {
